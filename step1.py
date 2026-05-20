@@ -1,30 +1,42 @@
 # The agent relocates to the nearest popular FBO
+#
+# Step 1: Bootstraps the delivery fleet. Starts with zero agents and
+# progressively creates them to meet the requested order volume. Outputs
+# shift-wise fleet sizes required across the day.
+#
+# Code accompanying:
+#   Sinha, D., & Pandit, D. (2021). A simulation-based study to determine
+#   the negative externalities of hyper-local food delivery. Transportation
+#   Research Part D, 100, 103071.
 
 import math
-import matplotlib.pyplot as plt
-import copy
-import pandas as pd
 import random
 import statistics
-import numpy
-# from goto import goto, label
 
-file1 = 'survey data main.xlsx'
-file1pd = pd.ExcelFile(file1)
-df1 = file1pd.parse('Orders3')
-df2 = file1pd.parse('Work_Earnings')
-# print(df1)
-file2 = 'Cust_fboOD_rankwise.xlsx'
-file2pd = pd.ExcelFile(file2)
-point_fboDF = file2pd.parse('Cust_fboOD_rankwise')
-# print(point_fboDF)
-file3 = 'fbo_fboOD.xlsx'
-file3pd = pd.ExcelFile(file3)
-fbo_fboDF = file3pd.parse('fbo_fboOD')
-# print(fbo_fboDF)
-file4 = pd.read_csv('CustomerOD_rankwise.csv')
-# sorting data frame
-file4.sort_values(["OriginID", "DestinationID"], axis=0, ascending=[True, True], inplace=True)
+import matplotlib.pyplot as plt
+import numpy
+import pandas as pd
+
+import common
+from common import (
+    N_FBOS,
+    N_CUSTOMER_POINTS,
+    MOTORBIKE_KMH,
+    BICYCLE_KMH,
+    CUSTOMER_PAY_PER_ORDER,
+    WAIT_TIME_PAY_PER_MIN,
+)
+
+# --- Load shared data (once) ---
+point_fboDF, fbo_fboDF, file4 = common.load_distance_matrices()
+_distributions = common.load_distributions()
+FBO_POPULARITY_PROB = _distributions["fbo_popularity"].values
+ORDER_HOUR_SUPPORT = _distributions["order_hour"].index.to_numpy()
+ORDER_HOUR_PROB = _distributions["order_hour"].values
+WAIT_TIME_SUPPORT = _distributions["wait_time_minutes"].index.to_numpy()
+WAIT_TIME_PROB = _distributions["wait_time_minutes"].values
+WORK_HOURS_SUPPORT = _distributions["work_hours"].index.to_numpy()
+WORK_HOURS_PROB = _distributions["work_hours"].values
 
 
 class Agent:
@@ -37,11 +49,11 @@ class Agent:
     def __init__(self, fbo_FID, tim, vehicle, cloudkitchen, workhourlimit):
         self.vehicle = vehicle  # 0 is bike, 1 is cycle, 0 set as default
         if vehicle == 0:
-            self.velocity = 19.67  # motorbike velocity
+            self.velocity = MOTORBIKE_KMH  # motorbike velocity
         else:
-            self.velocity = 12  # cycle velocity
+            self.velocity = BICYCLE_KMH  # cycle velocity
         if cloudkitchen == None:
-            self.location = numpy.random.choice(numpy.arange(0, 102), p=[0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.037037037037037035, 0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.007407407407407408, 0.022222222222222223, 0.014814814814814815, 0.003703703703703704, 0.003703703703703704, 0.0, 0.06666666666666667, 0.003703703703703704, 0.007407407407407408, 0.011111111111111112, 0.022222222222222223, 0.022222222222222223, 0.003703703703703704, 0.007407407407407408, 0.03333333333333333, 0.003703703703703704, 0.003703703703703704, 0.011111111111111112, 0.02962962962962963, 0.014814814814814815, 0.007407407407407408, 0.025925925925925925, 0.007407407407407408, 0.04814814814814815, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.014814814814814815, 0.007407407407407408, 0.011111111111111112, 0.003703703703703704, 0.007407407407407408, 0.011111111111111112, 0.007407407407407408, 0.011111111111111112, 0.007407407407407408, 0.007407407407407408, 0.022222222222222223, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.025925925925925925, 0.003703703703703704, 0.007407407407407408, 0.007407407407407408, 0.007407407407407408, 0.007407407407407408, 0.003703703703703704, 0.018518518518518517, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.022222222222222223, 0.003703703703703704, 0.007407407407407408, 0.037037037037037035, 0.011111111111111112, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.011111111111111112, 0.014814814814814815, 0.011111111111111112, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.025925925925925925, 0.007407407407407408, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.014814814814814815, 0.007407407407407408, 0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.007407407407407408, 0.011111111111111112, 0.007407407407407408, 0.007407407407407408, 0.007407407407407408, 0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704])
+            self.location = numpy.random.choice(numpy.arange(0, N_FBOS), p=FBO_POPULARITY_PROB)
             # the agent is not spawned at the eatery location to reflect a more realistic situation
         else:
             self.location = cloudkitchen
@@ -60,7 +72,7 @@ class Agent:
         self.total_working_time = 0
         self.spawn_time = tim
         self.work_hours = 0
-        w = numpy.random.choice(numpy.arange(1, 17), p=[0.0037, 0.0073, 0.0110, 0.0366, 0.0293, 0.0403, 0.0623, 0.0879, 0.0879, 0.2711, 0.1465, 0.0916, 0.0549, 0.0403, 0.0183, 0.0110])
+        w = numpy.random.choice(WORK_HOURS_SUPPORT, p=WORK_HOURS_PROB)
         # if the workhour exceeds the workhourlimit, it is set to the maximum
         if workhourlimit != None:
             print("Setting the workhour limit to 12, which is currently", w)
@@ -115,7 +127,7 @@ class Model:
 
         """
     def __init__(self, order_num, cloudkitchen, cyclewage, bicycleKMlimit, sar, workhourLimit):
-        self.fbo_FID = list(range(102))
+        self.fbo_FID = list(range(N_FBOS))
         self.order_num = order_num
         self.agent_dict = {}
         self.order_dict = {}
@@ -169,15 +181,15 @@ class Model:
             print("Attempting to assign an agent to the order bundle", i, k)
             if len(k) < 2:
                 newj = self.order_dict[k[0]]
-                row = math.ceil((newj[0] * 1800) + newj[3])
-                lm = point_fboDF.iat[row, 4]
+                row = math.ceil((newj[0] * N_CUSTOMER_POINTS) + newj[3])
+                lm = point_fboDF.at[row, 'Total_Length']
                 print("The assignmentModule, relocateflag, threshold, lm, newj, route", relocateflag, threshold, lm, newj, k)
                 self.assignmentModule(relocateflag, threshold, lm, j=newj, routed=k)
 
             else:
                 route, fitness = self.bruteForce_routing(k)
                 print("The best route and fitness are", route, fitness)
-                trip_time = Model.tym(fitness, 19.67)
+                trip_time = Model.tym(fitness, MOTORBIKE_KMH)
                 print("The tripTym for the best route is", trip_time)
                 if trip_time < delivery_time_limit:
                     print("A successful batching is complete")
@@ -190,8 +202,8 @@ class Model:
                     print("The batching order exceeds the delivery time limit")
                     print("eliminating the last stop in the trip route and assigning it individually", route[-1])
                     newj = self.order_dict[route[-1]]
-                    row = math.ceil((newj[0] * 1800) + newj[3])
-                    lm = point_fboDF.iat[row, 4]
+                    row = math.ceil((newj[0] * N_CUSTOMER_POINTS) + newj[3])
+                    lm = point_fboDF.at[row, 'Total_Length']
                     print("The assignmentModule, relocateflag, threshold, lm, newj, route",
                           relocateflag, threshold, lm, newj, [route[-1]])
                     self.assignmentModule(relocateflag, threshold, lm, j=newj, routed=[route[-1]])
@@ -199,13 +211,13 @@ class Model:
                     print("The new route is", route)
                     if len(route) < 2:
                         newj = self.order_dict[route[0]]
-                        row = math.ceil((newj[0] * 1800) + newj[3])
-                        lm = point_fboDF.iat[row, 4]
+                        row = math.ceil((newj[0] * N_CUSTOMER_POINTS) + newj[3])
+                        lm = point_fboDF.at[row, 'Total_Length']
                         print("The assignmentModule, relocateflag, threshold, lm, newj, route", relocateflag, threshold, lm, newj, route)
                         self.assignmentModule(relocateflag, threshold, lm, j=newj, routed=route)
                     else:
                         fitness = self.fitness_mod(route)
-                        trip_time = Model.tym(fitness, 19.67)
+                        trip_time = Model.tym(fitness, MOTORBIKE_KMH)
                         print("The tripTym for the best route is", trip_time)
                         if trip_time < delivery_time_limit:
                             print("A successful batching is complete ")
@@ -218,16 +230,16 @@ class Model:
                             print("The batching order again exceeds the delivery time limit")
                             print("eliminating the last stop in the trip route and assigning it individually", route[-1])
                             newj = self.order_dict[route[-1]]
-                            row = math.ceil((newj[0] * 1800) + newj[3])
-                            lm = point_fboDF.iat[row, 4]
+                            row = math.ceil((newj[0] * N_CUSTOMER_POINTS) + newj[3])
+                            lm = point_fboDF.at[row, 'Total_Length']
                             print("The assignmentModule, relocateflag, threshold, lm, newj, route",
                                   relocateflag, threshold, lm, newj, [route[-1]])
                             self.assignmentModule(relocateflag, threshold, lm, j=newj, routed=[route[-1]])
                             route.pop(-1)
                             print("The new route is", route)
                             newj = self.order_dict[route[0]]
-                            row = math.ceil((newj[0] * 1800) + newj[3])
-                            lm = point_fboDF.iat[row, 4]
+                            row = math.ceil((newj[0] * N_CUSTOMER_POINTS) + newj[3])
+                            lm = point_fboDF.at[row, 'Total_Length']
                             print("The assignmentModule, relocateflag, threshold, lm, newj, route",
                                 relocateflag, threshold, lm, newj, route)
                             self.assignmentModule(relocateflag, threshold, lm, j=newj, routed=route)
@@ -281,8 +293,8 @@ class Model:
             closest_agent = self.closest_agent_widLowest_earnings_wdoutrelocation(active_agent_list, j[0])
             # print("The closest agent to the FBO", j[0], "is", closest_agent)
             # updating the first and last mile travelled by the agent, when no relocation takes place
-            row = math.ceil((j[0] * 1800) + self.agent_dict[closest_agent].location)
-            fm = point_fboDF.iat[row, 4]
+            row = math.ceil((j[0] * N_CUSTOMER_POINTS) + self.agent_dict[closest_agent].location)
+            fm = point_fboDF.at[row, 'Total_Length']
             final_location = j[3]
             dm = 0
         else:
@@ -290,15 +302,15 @@ class Model:
             closest_agent = self.closest_agent_widLowest_earnings(active_agent_list, j[0])
             # print("The closest agent to the FBO", j[0], "is", closest_agent)
             # updating the first and last mile travelled by the agent
-            row = math.ceil((self.agent_dict[closest_agent].location * 102) + j[0])
-            fm = fbo_fboDF.iat[row, 4]
+            row = math.ceil((self.agent_dict[closest_agent].location * N_FBOS) + j[0])
+            fm = fbo_fboDF.at[row, 'Total_Length']
             # After delivering the order, the agent moves to the closest popular FBO
             choice = []
             # the agent relocates to the closest popular FBO
 
             for fbo, popularity in self.popularity_map.items():
-                row = math.ceil((fbo * 1800) + dmPoint)
-                dist = point_fboDF.iat[row, 4]
+                row = math.ceil((fbo * N_CUSTOMER_POINTS) + dmPoint)
+                dist = point_fboDF.at[row, 'Total_Length']
                 if popularity != 0:
                     c = (dist ** 2) / popularity
                 else:
@@ -370,8 +382,8 @@ class Model:
         batch_dist = 0
         c1 = self.cloudkitchen
         c2 = self.order_dict[route[0]][3]
-        row = math.ceil((c1 * 1800) + c2)
-        dist = point_fboDF.iat[row, 4]
+        row = math.ceil((c1 * N_CUSTOMER_POINTS) + c2)
+        dist = point_fboDF.at[row, 'Total_Length']
         batch_dist += dist
         # delivery time for first order in the route = time between order placed and del start time + time taken to
         # travel the 'first' last mile
@@ -382,8 +394,8 @@ class Model:
         for i in range(l - 1):
             c3 = self.order_dict[route[i]][3]
             c4 = self.order_dict[route[i + 1]][3]
-            row = math.ceil((c3 * 1800) + c4)
-            dist = file4.iat[row, 5] / 1000
+            row = math.ceil((c3 * N_CUSTOMER_POINTS) + c4)
+            dist = file4.at[row, 'Total_Length'] / 1000
             batch_dist += dist
             b_del_time = (del_strt_tym - self.order_dict[route[i+1]][1]) + Model.tym(batch_dist, vel)
             self.special_delivery_time.append(b_del_time)
@@ -393,19 +405,19 @@ class Model:
         for i in range(self.order_num):
             if self.cloudkitchen == None:
                 # The FBO is taken from the sample
-                fbo = numpy.random.choice(numpy.arange(0, 102), p=[0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.037037037037037035, 0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.007407407407407408, 0.022222222222222223, 0.014814814814814815, 0.003703703703703704, 0.003703703703703704, 0.0, 0.06666666666666667, 0.003703703703703704, 0.007407407407407408, 0.011111111111111112, 0.022222222222222223, 0.022222222222222223, 0.003703703703703704, 0.007407407407407408, 0.03333333333333333, 0.003703703703703704, 0.003703703703703704, 0.011111111111111112, 0.02962962962962963, 0.014814814814814815, 0.007407407407407408, 0.025925925925925925, 0.007407407407407408, 0.04814814814814815, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.014814814814814815, 0.007407407407407408, 0.011111111111111112, 0.003703703703703704, 0.007407407407407408, 0.011111111111111112, 0.007407407407407408, 0.011111111111111112, 0.007407407407407408, 0.007407407407407408, 0.022222222222222223, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.025925925925925925, 0.003703703703703704, 0.007407407407407408, 0.007407407407407408, 0.007407407407407408, 0.007407407407407408, 0.003703703703703704, 0.018518518518518517, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.022222222222222223, 0.003703703703703704, 0.007407407407407408, 0.037037037037037035, 0.011111111111111112, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.011111111111111112, 0.014814814814814815, 0.011111111111111112, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.025925925925925925, 0.007407407407407408, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704, 0.014814814814814815, 0.007407407407407408, 0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.007407407407407408, 0.011111111111111112, 0.007407407407407408, 0.007407407407407408, 0.007407407407407408, 0.003703703703703704, 0.007407407407407408, 0.003703703703703704, 0.003703703703703704, 0.003703703703703704])
+                fbo = numpy.random.choice(numpy.arange(0, N_FBOS), p=FBO_POPULARITY_PROB)
             else:
                 fbo = self.cloudkitchen
             # print("fbo", fbo)
-            points_list = list(range(1800))
+            points_list = list(range(N_CUSTOMER_POINTS))
             destination = random.choice(points_list)
 
             # for order time, the hour is taken from the sample distribution
             # And the minute is randomly selected
-            start_tym = numpy.random.choice(numpy.arange(9, 25), p=[0.02, 0.02, 0.06, 0.11, 0.12, 0.11, 0.06, 0.05, 0.05, 0.04, 0.04, 0.11, 0.09, 0.06, 0.04, 0.02])
+            start_tym = numpy.random.choice(ORDER_HOUR_SUPPORT, p=ORDER_HOUR_PROB)
             start_tym += random.randrange(0, 100) / 100
             # the wait time at the FBO is taken from the sample
-            wt = numpy.random.choice(numpy.arange(0, 33), p=[0.07037037, 0.07037037, 0.155555556, 0.096296296, 0.107407407, 0.066666667, 0.040740741, 0.022222222, 0.044444444, 0.033333333, 0.025925926, 0.033333333, 0.037037037, 0.014814815, 0.025925926, 0.044444444, 0.011111111, 0.011111111, 0.018518519, 0.007407407, 0.011111111, 0.003703704, 0.003703704, 0.007407407, 0, 0.003703704, 0, 0.011111111, 0, 0.003703704, 0.007407407, 0.003703704, 0.007407407])
+            wt = numpy.random.choice(WAIT_TIME_SUPPORT, p=WAIT_TIME_PROB)
             wait_tym = wt/60
 
             order_list.append([fbo, start_tym, wait_tym, destination])
@@ -416,51 +428,17 @@ class Model:
             counter += 1
 
     def order_generator_dynamic_serviceArea(self):
-        points_list = list(range(1800))
+        points_list = list(range(N_CUSTOMER_POINTS))
         serviceArea = []
         if self.cloudkitchen == None:
             # The FBO is taken from the sample
-            fbo = numpy.random.choice(numpy.arange(0, 102),
-                                      p=[0.003703703703703704, 0.007407407407407408, 0.003703703703703704,
-                                         0.037037037037037035, 0.003703703703703704, 0.007407407407407408,
-                                         0.003703703703703704, 0.003703703703703704, 0.007407407407407408,
-                                         0.022222222222222223, 0.014814814814814815, 0.003703703703703704,
-                                         0.003703703703703704, 0.0, 0.06666666666666667, 0.003703703703703704,
-                                         0.007407407407407408, 0.011111111111111112, 0.022222222222222223,
-                                         0.022222222222222223, 0.003703703703703704, 0.007407407407407408,
-                                         0.03333333333333333, 0.003703703703703704, 0.003703703703703704,
-                                         0.011111111111111112, 0.02962962962962963, 0.014814814814814815,
-                                         0.007407407407407408, 0.025925925925925925, 0.007407407407407408,
-                                         0.04814814814814815, 0.003703703703703704, 0.003703703703703704,
-                                         0.003703703703703704, 0.014814814814814815, 0.007407407407407408,
-                                         0.011111111111111112, 0.003703703703703704, 0.007407407407407408,
-                                         0.011111111111111112, 0.007407407407407408, 0.011111111111111112,
-                                         0.007407407407407408, 0.007407407407407408, 0.022222222222222223,
-                                         0.003703703703703704, 0.003703703703703704, 0.003703703703703704,
-                                         0.003703703703703704, 0.003703703703703704, 0.025925925925925925,
-                                         0.003703703703703704, 0.007407407407407408, 0.007407407407407408,
-                                         0.007407407407407408, 0.007407407407407408, 0.003703703703703704,
-                                         0.018518518518518517, 0.003703703703703704, 0.003703703703703704,
-                                         0.003703703703703704, 0.022222222222222223, 0.003703703703703704,
-                                         0.007407407407407408, 0.037037037037037035, 0.011111111111111112,
-                                         0.007407407407407408, 0.003703703703703704, 0.003703703703703704,
-                                         0.011111111111111112, 0.014814814814814815, 0.011111111111111112,
-                                         0.003703703703703704, 0.003703703703703704, 0.003703703703703704,
-                                         0.025925925925925925, 0.007407407407407408, 0.007407407407407408,
-                                         0.003703703703703704, 0.003703703703703704, 0.003703703703703704,
-                                         0.003703703703703704, 0.003703703703703704, 0.003703703703703704,
-                                         0.003703703703703704, 0.003703703703703704, 0.014814814814814815,
-                                         0.007407407407407408, 0.003703703703703704, 0.007407407407407408,
-                                         0.003703703703703704, 0.007407407407407408, 0.011111111111111112,
-                                         0.007407407407407408, 0.007407407407407408, 0.007407407407407408,
-                                         0.003703703703703704, 0.007407407407407408, 0.003703703703703704,
-                                         0.003703703703703704, 0.003703703703703704])
+            fbo = numpy.random.choice(numpy.arange(0, N_FBOS), p=FBO_POPULARITY_PROB)
         else:
             fbo = self.cloudkitchen
         # print("fbo", fbo)
         for p in points_list:
-            row = math.ceil((fbo * 1800) + p)
-            dist = point_fboDF.iat[row, 4]
+            row = math.ceil((fbo * N_CUSTOMER_POINTS) + p)
+            dist = point_fboDF.at[row, 'Total_Length']
             if dist < self.service_area_radius:
                 serviceArea.append(p)
                 # selecting all customers within service area radius
@@ -469,18 +447,10 @@ class Model:
             destination = random.choice(serviceArea)
             # for order time, the hour is taken from the sample distribution
             # And the minute is randomly selected
-            start_tym = numpy.random.choice(numpy.arange(9, 25),
-                                            p=[0.02, 0.02, 0.06, 0.11, 0.12, 0.11, 0.06, 0.05, 0.05, 0.04, 0.04, 0.11,
-                                               0.09, 0.06, 0.04, 0.02])
+            start_tym = numpy.random.choice(ORDER_HOUR_SUPPORT, p=ORDER_HOUR_PROB)
             start_tym += random.randrange(0, 100) / 100
             # the wait time at the FBO is taken from the sample
-            wt = numpy.random.choice(numpy.arange(0, 33),
-                                     p=[0.07037037, 0.07037037, 0.155555556, 0.096296296, 0.107407407, 0.066666667,
-                                        0.040740741, 0.022222222, 0.044444444, 0.033333333, 0.025925926, 0.033333333,
-                                        0.037037037, 0.014814815, 0.025925926, 0.044444444, 0.011111111, 0.011111111,
-                                        0.018518519, 0.007407407, 0.011111111, 0.003703704, 0.003703704, 0.007407407, 0,
-                                        0.003703704, 0, 0.011111111, 0, 0.003703704, 0.007407407, 0.003703704,
-                                        0.007407407])
+            wt = numpy.random.choice(WAIT_TIME_SUPPORT, p=WAIT_TIME_PROB)
             wait_tym = wt / 60
 
             order_list.append([fbo, start_tym, wait_tym, destination])
@@ -506,8 +476,8 @@ class Model:
 
         if len(active_agents) != 0:
             for agent in active_agents:  # creating distance matrix from cafe to each agent
-                row = math.ceil((self.agent_dict[agent].location * 102) + fbo)
-                dist = fbo_fboDF.iat[row, 4]
+                row = math.ceil((self.agent_dict[agent].location * N_FBOS) + fbo)
+                dist = fbo_fboDF.at[row, 'Total_Length']
                 closemat[agent] = dist
 
             mini = 10000000000000
@@ -528,8 +498,8 @@ class Model:
 
         if len(active_agents) != 0:
             for agent in active_agents:  # creating distance matrix from cafe to each agent
-                row = math.ceil((self.agent_dict[agent].location * 102) + fbo)
-                dist = fbo_fboDF.iat[row, 4]
+                row = math.ceil((self.agent_dict[agent].location * N_FBOS) + fbo)
+                dist = fbo_fboDF.at[row, 'Total_Length']
                 if self.agent_dict[agent].total_working_time == 0:
                     earning_perTime = self.agent_dict[agent].current_earning / 1
                 else:
@@ -553,8 +523,8 @@ class Model:
     def wage_calculator(self, fm, lm, wt, vehicle, batch_size):
         if vehicle == 0:
             travelpay = (fm+lm) * 5
-            waittimepay = wt * 1
-            wage = (5*batch_size) + travelpay + waittimepay
+            waittimepay = wt * WAIT_TIME_PAY_PER_MIN
+            wage = (CUSTOMER_PAY_PER_ORDER*batch_size) + travelpay + waittimepay
         else:
             wage = self.cycle_wage
         return wage
@@ -600,15 +570,15 @@ class Model:
             print("calculating intra-link dist between each customer point")
             c1 = self.order_dict[chromo[i]][3]
             c2 = self.order_dict[chromo[i+1]][3]
-            row = math.ceil((c1 * 1800) + c2)
-            dist = file4.iat[row, 5] / 1000
+            row = math.ceil((c1 * N_CUSTOMER_POINTS) + c2)
+            dist = file4.at[row, 'Total_Length'] / 1000
             print("customer1, customer2, row, dist", c1, c2, row, dist)
             fitness = fitness + dist
         print("Finding the distance between the cloud kitchen and first customer")
         c3 = self.cloudkitchen
         c4 = self.order_dict[chromo[0]][3]
-        row2 = math.ceil((c3 * 1800) + c4)
-        dist2 = point_fboDF.iat[row2, 4]
+        row2 = math.ceil((c3 * N_CUSTOMER_POINTS) + c4)
+        dist2 = point_fboDF.at[row2, 'Total_Length']
         print("cloudkitchen, customer1, row, dist", c3, c4, row2, dist2)
         fitness = fitness + dist2
         return fitness
@@ -618,8 +588,8 @@ class Model:
 
         if len(active_agents) != 0:
             for agent in active_agents:  # creating distance matrix from cafe to each agent
-                row = math.ceil((fbo * 1800) + self.agent_dict[agent].location)
-                dist = point_fboDF.iat[row, 4]
+                row = math.ceil((fbo * N_CUSTOMER_POINTS) + self.agent_dict[agent].location)
+                dist = point_fboDF.at[row, 'Total_Length']
                 if self.agent_dict[agent].total_working_time == 0:
                     earning_perTime = self.agent_dict[agent].current_earning / 1
                 else:
@@ -704,136 +674,103 @@ class Model:
     def tym(dista, vel):
         return dista / vel
 
-# ######################
-fleetsize = []
-ordersfulfilledbikes = 0
-ordersfulfilledbicycles = 0
-orderBatches = []
-first_mile_list = []
-last_mile_list = []
-dead_mile_list = []
-shift9 = []
-shift12 = []
-shift16 = []
-shift19 = []
-shift9c = []
-shift12c = []
-shift16c = []
-shift19c = []
-cycles = []
-iterations = 30
-chosenBicycleAgent = None
-for k in range(iterations):
-    shift9s = 0
-    shift12s = 0
-    shift16s = 0
-    shift19s = 0
-    shift9sc = 0
-    shift12sc = 0
-    shift16sc = 0
-    shift19sc = 0
-    cycle = 0
-    a = Model(100, cloudkitchen=None, cyclewage=15, bicycleKMlimit=500, sar=None, workhourLimit=100)
-    agent_dict = a.modelRun(relocateflag=1, threshold=0, timeband=0.083, delivery_time_limit=0.75, max_batching_limit=3)
-    ordersfulfilledbikes += a.orders_fulfilled_bike
-    ordersfulfilledbicycles += a.orders_fulfilled_bicycle
-    orderBatches += a.orderBatches
-    agent_join_tym = []
-    for i, j in agent_dict.items():
-        first_mile_list += j.first_mile
-        last_mile_list += j.last_mile
-        dead_mile_list += j.dead_mile
+
+if __name__ == "__main__":
+    # ######################
+    fleetsize = []
+    ordersfulfilledbikes = 0
+    ordersfulfilledbicycles = 0
+    orderBatches = []
+    first_mile_list = []
+    last_mile_list = []
+    dead_mile_list = []
+    shift9 = []
+    shift12 = []
+    shift16 = []
+    shift19 = []
+    shift9c = []
+    shift12c = []
+    shift16c = []
+    shift19c = []
+    cycles = []
+    iterations = 30
+    chosenBicycleAgent = None
+    for k in range(iterations):
+        shift9s = 0
+        shift12s = 0
+        shift16s = 0
+        shift19s = 0
+        shift9sc = 0
+        shift12sc = 0
+        shift16sc = 0
+        shift19sc = 0
+        cycle = 0
+        a = Model(100, cloudkitchen=None, cyclewage=15, bicycleKMlimit=500, sar=None, workhourLimit=100)
+        agent_dict = a.modelRun(relocateflag=1, threshold=0, timeband=0.083, delivery_time_limit=0.75, max_batching_limit=3)
+        ordersfulfilledbikes += a.orders_fulfilled_bike
+        ordersfulfilledbicycles += a.orders_fulfilled_bicycle
+        orderBatches += a.orderBatches
+        agent_join_tym = []
+        for i, j in agent_dict.items():
+            first_mile_list += j.first_mile
+            last_mile_list += j.last_mile
+            dead_mile_list += j.dead_mile
 
 
-        if j.spawn_time < 12:
-            if j.vehicle == 0:
-                shift9s = shift9s + 1
-            else:
-                shift9sc = shift9sc + 1
-                if j.work_hours > 12:
-                    chosenBicycleAgent = j
+            if j.spawn_time < 12:
+                if j.vehicle == 0:
+                    shift9s = shift9s + 1
+                else:
+                    shift9sc = shift9sc + 1
+                    if j.work_hours > 12:
+                        chosenBicycleAgent = j
 
-        elif j.spawn_time > 12 and j.spawn_time < 16:
-            if j.vehicle == 0:
-                shift12s = shift12s + 1
-            else:
-                shift12sc = shift12sc + 1
-        elif j.spawn_time > 16 and j.spawn_time < 19:
-            if j.vehicle == 0:
-                shift16s = shift16s + 1
-            else:
-                shift16sc = shift16sc + 1
-        elif j.spawn_time > 19:
-            if j.vehicle == 0:
-                shift19s = shift19s + 1
-            else:
-                shift19sc = shift19sc + 1
-    ts = shift9s + shift12s + shift16s + shift19s
-    fleetsize.append([k, ts])
-    shift9.append(shift9s)
-    shift12.append(shift12s)
-    shift16.append(shift16s)
-    shift19.append(shift19s)
-    shift9c.append(shift9sc)
-    shift12c.append(shift12sc)
-    shift16c.append(shift16sc)
-    shift19c.append(shift19sc)
-    cycles.append(cycle)
-print("*****************************************************************")
-#print("Avg. first mile", statistics.mean(first_mile_list))
-#print("Avg. last mile", statistics.mean(last_mile_list))
-last_mile_list.sort(reverse=True)
-#print(last_mile_list)
-print("Avg. dead mile", statistics.mean(dead_mile_list))
-print("Batched Orders", sum(orderBatches), orderBatches)
-print("Shiftwise",statistics.mean(shift9), statistics.mean(shift12), statistics.mean(shift19))
-print("Shift@9", statistics.mean(shift9), statistics.stdev(shift9))
-print("Shift@12", statistics.mean(shift12), statistics.stdev(shift12))
-print("Shift@16", statistics.mean(shift16), statistics.stdev(shift16))
-print("Shift@19", statistics.mean(shift19), statistics.stdev(shift19))
-print("ordersfulfilled bikes", ordersfulfilledbikes)
-print("Cycles")
-print("Shift@9cycles", statistics.mean(shift9c), statistics.stdev(shift9c))
-print("Shift@12cycles", statistics.mean(shift12c), statistics.stdev(shift12c))
-print("Shift@16cycles", statistics.mean(shift16c), statistics.stdev(shift16c))
-print("Shift@19cycles", statistics.mean(shift19c), statistics.stdev(shift19c))
-print("ordersfulfilled bicycles", ordersfulfilledbicycles)
-fleetsize.sort(key=lambda x: x[1])
-print(fleetsize)
-#distVStimeDF = pd.DataFrame(chosenBicycleAgent.distTimeGraph, columns=['x', 'y'])
-#distVStimeDF.to_excel("FleetTestdistVStimeGraph2.xlsx")
-##########################
-# to find threshold distance when delivery time becomes equal
-# flag = 0
-# t = 0.6
-# while flag == 0:
-#     motorbike_deliveryTime = []
-#     bicycle_deliveryTime = []
-#     cycles = 0
-#     motorbikes = 0
-#     a = Model(100)
-#     agent_dict = a.modelRun(threshold=t)
-#
-#     for i, j in agent_dict.items():
-#         if j.vehicle == 0:
-#             motorbikes += 1
-#             motorbike_deliveryTime +=j.delivery_time
-#         else:
-#             cycles += 1
-#             bicycle_deliveryTime +=j.delivery_time
-#
-#     t = t + 0.1
-#     print(motorbike_deliveryTime)
-#     print(bicycle_deliveryTime)
-#     print("Motorbike fleet size & their delivery time", motorbikes, statistics.mean(motorbike_deliveryTime))
-#     print("Bicycle fleet size & their delivery time", cycles, statistics.mean(bicycle_deliveryTime))
-#     ctime = round(statistics.mean(bicycle_deliveryTime) * 60)
-#     btime = round(statistics.mean(motorbike_deliveryTime) * 60)
-#     if btime == ctime:
-#         flag = 1
-#     print(btime, ctime)
-# print("threshold", t)
-
-
-
-
+            elif j.spawn_time > 12 and j.spawn_time < 16:
+                if j.vehicle == 0:
+                    shift12s = shift12s + 1
+                else:
+                    shift12sc = shift12sc + 1
+            elif j.spawn_time > 16 and j.spawn_time < 19:
+                if j.vehicle == 0:
+                    shift16s = shift16s + 1
+                else:
+                    shift16sc = shift16sc + 1
+            elif j.spawn_time > 19:
+                if j.vehicle == 0:
+                    shift19s = shift19s + 1
+                else:
+                    shift19sc = shift19sc + 1
+        ts = shift9s + shift12s + shift16s + shift19s
+        fleetsize.append([k, ts])
+        shift9.append(shift9s)
+        shift12.append(shift12s)
+        shift16.append(shift16s)
+        shift19.append(shift19s)
+        shift9c.append(shift9sc)
+        shift12c.append(shift12sc)
+        shift16c.append(shift16sc)
+        shift19c.append(shift19sc)
+        cycles.append(cycle)
+    print("*****************************************************************")
+    #print("Avg. first mile", statistics.mean(first_mile_list))
+    #print("Avg. last mile", statistics.mean(last_mile_list))
+    last_mile_list.sort(reverse=True)
+    #print(last_mile_list)
+    print("Avg. dead mile", statistics.mean(dead_mile_list))
+    print("Batched Orders", sum(orderBatches), orderBatches)
+    print("Shiftwise",statistics.mean(shift9), statistics.mean(shift12), statistics.mean(shift19))
+    print("Shift@9", statistics.mean(shift9), statistics.stdev(shift9))
+    print("Shift@12", statistics.mean(shift12), statistics.stdev(shift12))
+    print("Shift@16", statistics.mean(shift16), statistics.stdev(shift16))
+    print("Shift@19", statistics.mean(shift19), statistics.stdev(shift19))
+    print("ordersfulfilled bikes", ordersfulfilledbikes)
+    print("Cycles")
+    print("Shift@9cycles", statistics.mean(shift9c), statistics.stdev(shift9c))
+    print("Shift@12cycles", statistics.mean(shift12c), statistics.stdev(shift12c))
+    print("Shift@16cycles", statistics.mean(shift16c), statistics.stdev(shift16c))
+    print("Shift@19cycles", statistics.mean(shift19c), statistics.stdev(shift19c))
+    print("ordersfulfilled bicycles", ordersfulfilledbicycles)
+    fleetsize.sort(key=lambda x: x[1])
+    print(fleetsize)
+    #distVStimeDF = pd.DataFrame(chosenBicycleAgent.distTimeGraph, columns=['x', 'y'])
+    #distVStimeDF.to_excel("FleetTestdistVStimeGraph2.xlsx")
