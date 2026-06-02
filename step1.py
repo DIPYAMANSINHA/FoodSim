@@ -9,11 +9,11 @@
 #   the negative externalities of hyper-local food delivery. Transportation
 #   Research Part D, 100, 103071.
 
+import csv
 import math
+import os
 import random
 import statistics
-import os
-import csv
 
 import matplotlib.pyplot as plt
 import numpy
@@ -25,8 +25,6 @@ from common import (
     N_CUSTOMER_POINTS,
     MOTORBIKE_KMH,
     BICYCLE_KMH,
-    CUSTOMER_PAY_PER_ORDER,
-    WAIT_TIME_PAY_PER_MIN,
 )
 
 # --- Load shared data (once) ---
@@ -128,7 +126,8 @@ class Model:
     """The main model class
 
         """
-    def __init__(self, order_num, cloudkitchen, cyclewage, bicycleKMlimit, sar, workhourLimit):
+    def __init__(self, order_num, cloudkitchen, cyclewage, bicycleKMlimit, sar, workhourLimit,
+                 wage_rate, customer_pay_per_order, wait_time_pay_per_min):
         self.fbo_FID = list(range(N_FBOS))
         self.order_num = order_num
         self.agent_dict = {}
@@ -144,6 +143,9 @@ class Model:
         self.bicycleKMlimit = bicycleKMlimit
         self.service_area_radius = sar
         self.workhour_limit = workhourLimit
+        self.wage_rate = wage_rate
+        self.customer_pay_per_order = customer_pay_per_order
+        self.wait_time_pay_per_min = wait_time_pay_per_min
 
     def modelRun(self,relocateflag, threshold, timeband, delivery_time_limit, max_batching_limit):
         self.order_generator()
@@ -524,9 +526,9 @@ class Model:
 
     def wage_calculator(self, fm, lm, wt, vehicle, batch_size):
         if vehicle == 0:
-            travelpay = (fm+lm) * 5
-            waittimepay = wt * WAIT_TIME_PAY_PER_MIN
-            wage = (CUSTOMER_PAY_PER_ORDER*batch_size) + travelpay + waittimepay
+            travelpay = (fm+lm) * self.wage_rate
+            waittimepay = wt * self.wait_time_pay_per_min
+            wage = (self.customer_pay_per_order*batch_size) + travelpay + waittimepay
         else:
             wage = self.cycle_wage
         return wage
@@ -678,6 +680,12 @@ class Model:
 
 
 if __name__ == "__main__":
+    # Load scenario parameters from config.yaml
+    cfg = common.load_config()
+    sc = cfg["scenario"]
+    s1 = cfg["step1"]
+    pay = cfg["pay_structure"]
+
     # ######################
     fleetsize = []
     ordersfulfilledbikes = 0
@@ -695,7 +703,7 @@ if __name__ == "__main__":
     shift16c = []
     shift19c = []
     cycles = []
-    iterations = 30
+    iterations = s1["iterations"]
     chosenBicycleAgent = None
     for k in range(iterations):
         shift9s = 0
@@ -707,8 +715,24 @@ if __name__ == "__main__":
         shift16sc = 0
         shift19sc = 0
         cycle = 0
-        a = Model(100, cloudkitchen=None, cyclewage=15, bicycleKMlimit=500, sar=None, workhourLimit=100)
-        agent_dict = a.modelRun(relocateflag=1, threshold=0, timeband=0.083, delivery_time_limit=0.75, max_batching_limit=3)
+        a = Model(
+            order_num=sc["order_num"],
+            cloudkitchen=sc["cloudkitchen"],
+            cyclewage=s1["cycle_wage"],
+            bicycleKMlimit=sc["bicycle_km_limit"],
+            sar=sc["service_area_radius"],
+            workhourLimit=sc["work_hour_limit"],
+            wage_rate=pay["wage_rate_per_km"],
+            customer_pay_per_order=pay["customer_pay_per_order"],
+            wait_time_pay_per_min=pay["wait_time_pay_per_min"],
+        )
+        agent_dict = a.modelRun(
+            relocateflag=sc["relocate_flag"],
+            threshold=sc["bicycle_distance_threshold"],
+            timeband=sc["timeband_hours"],
+            delivery_time_limit=sc["delivery_time_limit_hours"],
+            max_batching_limit=sc["max_batching_limit"],
+        )
         ordersfulfilledbikes += a.orders_fulfilled_bike
         ordersfulfilledbicycles += a.orders_fulfilled_bicycle
         orderBatches += a.orderBatches
@@ -776,6 +800,7 @@ if __name__ == "__main__":
     print(fleetsize)
     #distVStimeDF = pd.DataFrame(chosenBicycleAgent.distTimeGraph, columns=['x', 'y'])
     #distVStimeDF.to_excel("FleetTestdistVStimeGraph2.xlsx")
+
     # --- Write fleet sizes for Step 2 handoff ---
     os.makedirs("outputs", exist_ok=True)
     fleet_means = {

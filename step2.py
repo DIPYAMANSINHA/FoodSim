@@ -8,11 +8,11 @@
 #   of gig work: A case of hyper-local food delivery workers in Kolkata,
 #   India. Research in Transportation Economics, 100, 101335.
 
+import csv
 import math
+import os
 import random
 import statistics
-import csv
-import os
 
 import matplotlib.pyplot as plt
 import numpy
@@ -24,8 +24,6 @@ from common import (
     N_CUSTOMER_POINTS,
     MOTORBIKE_KMH,
     BICYCLE_KMH,
-    CUSTOMER_PAY_PER_ORDER,
-    WAIT_TIME_PAY_PER_MIN,
 )
 
 # --- Load shared data (once) ---
@@ -207,7 +205,8 @@ class Model:
     """The main model class
 
         """
-    def __init__(self, order_num, shiftvol, cloudkitchen, wagerate, minWage, bicycleKMlimit, sar, workhourLimit):
+    def __init__(self, order_num, shiftvol, cloudkitchen, wagerate, minWage, bicycleKMlimit, sar, workhourLimit,
+                 customer_pay_per_order, wait_time_pay_per_min):
         self.fbo_FID = list(range(N_FBOS))
         self.order_num = order_num
         self.agent_dict = {}
@@ -226,6 +225,8 @@ class Model:
         self.bicycleKMlimit = bicycleKMlimit
         self.service_area_radius = sar
         self.workhourLimit = workhourLimit
+        self.customer_pay_per_order = customer_pay_per_order
+        self.wait_time_pay_per_min = wait_time_pay_per_min
         self.agent_creator(self.workhourLimit)
 
     def modelRun(self, relocateflag, threshold, timeband, delivery_time_limit, max_batching_limit):
@@ -868,8 +869,8 @@ class Model:
     def wage_calculator(self, fm, lm, wt, vehicle, batchsize):
 
         travelpay = (fm + lm) * self.wageRate
-        waittimepay = wt * WAIT_TIME_PAY_PER_MIN
-        wage = (CUSTOMER_PAY_PER_ORDER*batchsize) + travelpay + waittimepay
+        waittimepay = wt * self.wait_time_pay_per_min
+        wage = (self.customer_pay_per_order*batchsize) + travelpay + waittimepay
         if wage < self.minWage:
             wage = self.minWage
         return wage
@@ -918,6 +919,11 @@ class Model:
 
 
 if __name__ == "__main__":
+    # Load scenario parameters from config.yaml
+    cfg = common.load_config()
+    s2 = cfg["step2"]
+    pay = cfg["pay_structure"]
+
     #########################################################
     cycles = 0
     bikes = 0
@@ -943,10 +949,10 @@ if __name__ == "__main__":
     earningtablebiycle = []
     order_delay = []
     orderskipped = 0
-    iterations = 30
-    orderVol = 500
+    iterations = s2["iterations"]
+    orderVol = sc["order_num"]
     # Try to load fleet sizes from Step 1's output; fall back to a default if absent
-    default_shiftvol = [[18, 20, 0, 9], [0, 0, 0, 0]]
+    default_shiftvol = [s2["default_shiftvol"]["bike"], s2["default_shiftvol"]["bicycle"]]
     fleet_sizes_path = "outputs/fleet_sizes.csv"
     if os.path.exists(fleet_sizes_path):
         shiftvol = [[0, 0, 0, 0], [0, 0, 0, 0]]
@@ -961,17 +967,34 @@ if __name__ == "__main__":
         print(f"Loaded fleet sizes from {fleet_sizes_path}: {shiftvol}")
     else:
         shiftvol = default_shiftvol
-        print(f"No {fleet_sizes_path} found — using default shiftvol: {shiftvol}")
-    mbl = 1
+        print(f"No {fleet_sizes_path} found - using default shiftvol: {shiftvol}")
+    mbl = sc["max_batching_limit"]
     r = None
-    wagerate = 5
+    wagerate = pay["wage_rate_per_km"]
     ###############################################################################################################################
     # this is where the first set of input goes
-    a = Model(orderVol, shiftvol, cloudkitchen=None, wagerate=wagerate, minWage=15, bicycleKMlimit=500, sar=None, workhourLimit=None)
+    a = Model(
+        order_num=orderVol,
+        shiftvol=shiftvol,
+        cloudkitchen=sc["cloudkitchen"],
+        wagerate=wagerate,
+        minWage=s2["min_wage"],
+        bicycleKMlimit=sc["bicycle_km_limit"],
+        sar=sc["service_area_radius"],
+        workhourLimit=sc["work_hour_limit"],
+        customer_pay_per_order=pay["customer_pay_per_order"],
+        wait_time_pay_per_min=pay["wait_time_pay_per_min"],
+    )
     for p in range(iterations):
         ###############################################################################################################################
         # this is where the second and last set of input goes
-        a.modelRun(relocateflag=1, threshold=0, timeband=0.083, delivery_time_limit=0.75, max_batching_limit=mbl)
+        a.modelRun(
+            relocateflag=sc["relocate_flag"],
+            threshold=sc["bicycle_distance_threshold"],
+            timeband=sc["timeband_hours"],
+            delivery_time_limit=sc["delivery_time_limit_hours"],
+            max_batching_limit=mbl,
+        )
         orderDelivery_Vehicle.append(a.orderDelivery_vehicle)
 
         if p == 6 or p == 13 or p == 20 or p == 27:

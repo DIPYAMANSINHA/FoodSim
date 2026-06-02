@@ -1,0 +1,145 @@
+# =============================================================================
+# Configuration for the hyper-local food delivery simulation
+# =============================================================================
+#
+# Edit this file to run different scenarios. Both step1.py and step2.py read
+# from here. Comments above each parameter explain what it does and what
+# values were used in the published research.
+#
+# Structure:
+#   - scenario:       parameters shared by both steps (the scenario itself)
+#   - pay_structure:  pay parameters, shared by both steps
+#   - step1:          parameters used only by step1.py
+#   - step2:          parameters used only by step2.py
+#
+# To explore a different scenario, change values in scenario/pay_structure
+# and re-run both steps. The data/ files and constants in common.py do not
+# need to be touched.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# Scenario definition (shared by Step 1 and Step 2)
+# -----------------------------------------------------------------------------
+# These parameters define the scenario being simulated. Both steps must agree
+# on them, so they live here in one place. Changing any value here affects
+# both Step 1 (fleet sizing) and Step 2 (multi-day operations).
+
+scenario:
+
+  # Number of orders generated per simulation run / per day.
+  # The 2021 paper swept this across 500, 1000, 1500, 2000+ to study how
+  # fleet size and externalities scale with demand. The 2023 paper used 500
+  # for the headline income results.
+  # Larger values produce more agents and longer runtimes.
+  order_num: 100
+
+  # Cloud kitchen scenario (2024 conference paper).
+  # null  = restaurant model (each order has a random FBO origin)
+  # an integer 0-101 = cloud-kitchen scenario, where ALL orders originate
+  # from that one FBO.
+  cloudkitchen: null
+
+  # Daily distance cap for bicycle agents (km).
+  # Realism constraint reflecting real-world bicycle worker fatigue.
+  # 500 effectively means "no cap" in normal scenarios.
+  bicycle_km_limit: 500
+
+  # Service area radius for the alternative dynamic-service-area order
+  # generator (km). Set to null unless you're calling that variant.
+  service_area_radius: null
+
+  # Cap on agent work hours per day. null = no cap.
+  # Both 2021 and 2023 papers used null (no cap).
+  work_hour_limit: null
+
+  # 0 = agent stays at delivery location after dropping off the order
+  # 1 = agent relocates to the closest popular FBO after delivery
+  # Both papers used 1.
+  relocate_flag: 1
+
+  # Distance threshold (km) below which orders are assigned to bicycles
+  # rather than motorbikes.
+  # 0  = no bicycles used (motorbikes only) - this is the 2021/2023 baseline.
+  # >0 = orders shorter than this go to bicycles - 2025 paper varied this.
+  bicycle_distance_threshold: 0
+
+  # Time window for grouping orders into batches (hours).
+  # 0.083 hours ~ 5 minutes.
+  timeband_hours: 0.083
+
+  # Maximum acceptable trip time for a batched delivery (hours).
+  # 0.75 hours = 45 minutes.
+  delivery_time_limit_hours: 0.75
+
+  # Maximum orders per batch.
+  # 1 = no batching (each order delivered individually) - used in 2021/2023.
+  # 3 = batches of up to 3 orders - used in the 2024 cloud-kitchen paper.
+  # NOTE: batching with cloudkitchen=null currently has a latent bug
+  # (see README "Known limitations").
+  max_batching_limit: 1
+
+
+# -----------------------------------------------------------------------------
+# Pay structure (shared by Step 1 and Step 2)
+# -----------------------------------------------------------------------------
+# Defines how delivery workers are paid per order. The pay parameters are
+# the policy lever from the 2023 paper - change them to simulate alternative
+# pay structures and observe the income impact.
+
+pay_structure:
+
+  # Per-km travel pay (INR per km of first + last mile).
+  # 2023 paper varied this between 4-6 INR/km to study pay revisions.
+  wage_rate_per_km: 5
+
+  # Flat customer pay per order (INR per order delivered).
+  # Applies to batched orders too: a 3-order batch earns 3 x this value.
+  customer_pay_per_order: 5
+
+  # Pay for waiting at the FBO (INR per minute of wait).
+  wait_time_pay_per_min: 1
+
+
+# -----------------------------------------------------------------------------
+# Step 1 only - Fleet sizing
+# -----------------------------------------------------------------------------
+# Step 1 bootstraps the delivery fleet: it starts with zero agents and adds
+# them on demand until all orders are satisfied. Output is the shift-wise
+# fleet size required, written to outputs/fleet_sizes.csv for Step 2.
+
+step1:
+
+  # Number of independent replicate simulations.
+  # Means and stdev across replicates are reported. 30 is the published default.
+  iterations: 30
+
+  # Flat per-trip wage for bicycle agents (INR).
+  # Used only when bicycles are enabled (scenario.bicycle_distance_threshold > 0).
+  cycle_wage: 15
+
+
+# -----------------------------------------------------------------------------
+# Step 2 only - Multi-day operations, emissions, and income
+# -----------------------------------------------------------------------------
+# Step 2 takes the fleet sizes from Step 1 (via outputs/fleet_sizes.csv) and
+# simulates multiple days of operation, producing emissions per delivery,
+# parking demand, and the income distribution of delivery workers.
+
+step2:
+
+  # Number of days to simulate.
+  # 30 days produces stable income distribution estimates.
+  iterations: 30
+
+  # Minimum wage floor (INR per delivery).
+  # If computed wage falls below this, it's raised to this minimum.
+  # 15 was the default in the 2023 paper.
+  min_wage: 15
+
+  # Default fleet sizes used only if outputs/fleet_sizes.csv is absent
+  # (i.e. Step 1 hasn't been run first).
+  # Format: lists of four integers, one per shift (9am, 12pm, 4pm, 7pm).
+  default_shiftvol:
+    bike: [18, 20, 0, 9]
+    bicycle: [0, 0, 0, 0]
