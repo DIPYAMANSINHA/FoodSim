@@ -12,6 +12,8 @@
 import math
 import random
 import statistics
+import os
+import csv
 
 import matplotlib.pyplot as plt
 import numpy
@@ -774,3 +776,26 @@ if __name__ == "__main__":
     print(fleetsize)
     #distVStimeDF = pd.DataFrame(chosenBicycleAgent.distTimeGraph, columns=['x', 'y'])
     #distVStimeDF.to_excel("FleetTestdistVStimeGraph2.xlsx")
+    # --- Write fleet sizes for Step 2 handoff ---
+    os.makedirs("outputs", exist_ok=True)
+    fleet_means = {
+        "bike": {
+            9: statistics.mean(shift9),
+            12: statistics.mean(shift12),
+            16: statistics.mean(shift16),
+            19: statistics.mean(shift19),
+        },
+        "bicycle": {
+            9: statistics.mean(shift9c),
+            12: statistics.mean(shift12c),
+            16: statistics.mean(shift16c),
+            19: statistics.mean(shift19c),
+        },
+    }
+    with open("outputs/fleet_sizes.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["vehicle", "shift_hour", "mean_fleet_size", "ceil_fleet_size"])
+        for vehicle, shifts in fleet_means.items():
+            for hour, mean_val in shifts.items():
+                writer.writerow([vehicle, hour, mean_val, math.ceil(mean_val)])
+    print("Fleet sizes written to outputs/fleet_sizes.csv")

@@ -11,6 +11,8 @@
 import math
 import random
 import statistics
+import csv
+import os
 
 import matplotlib.pyplot as plt
 import numpy
@@ -943,7 +945,23 @@ if __name__ == "__main__":
     orderskipped = 0
     iterations = 30
     orderVol = 500
-    shiftvol = [[18, 20, 0, 9], [0, 0, 0, 0]]
+    # Try to load fleet sizes from Step 1's output; fall back to a default if absent
+    default_shiftvol = [[18, 20, 0, 9], [0, 0, 0, 0]]
+    fleet_sizes_path = "outputs/fleet_sizes.csv"
+    if os.path.exists(fleet_sizes_path):
+        shiftvol = [[0, 0, 0, 0], [0, 0, 0, 0]]
+        vehicle_idx = {"bike": 0, "bicycle": 1}
+        shift_idx = {9: 0, 12: 1, 16: 2, 19: 3}
+        with open(fleet_sizes_path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                v = vehicle_idx[row["vehicle"]]
+                s = shift_idx[int(row["shift_hour"])]
+                shiftvol[v][s] = int(row["ceil_fleet_size"])
+        print(f"Loaded fleet sizes from {fleet_sizes_path}: {shiftvol}")
+    else:
+        shiftvol = default_shiftvol
+        print(f"No {fleet_sizes_path} found — using default shiftvol: {shiftvol}")
     mbl = 1
     r = None
     wagerate = 5
