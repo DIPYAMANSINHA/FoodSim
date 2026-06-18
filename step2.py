@@ -922,6 +922,7 @@ if __name__ == "__main__":
     # Load scenario parameters from config.yaml
     cfg = common.load_config()
     s2 = cfg["step2"]
+    sc = cfg["scenario"]
     pay = cfg["pay_structure"]
 
     #########################################################

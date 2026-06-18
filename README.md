@@ -42,7 +42,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-(To be filled in after the code is cleaned up.)
+To be updated
 
 ## License
 
