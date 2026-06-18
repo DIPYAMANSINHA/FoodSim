@@ -17,6 +17,7 @@ import statistics
 import matplotlib.pyplot as plt
 import numpy
 import pandas as pd
+from pathlib import Path
 
 import common
 from common import (
@@ -25,6 +26,14 @@ from common import (
     MOTORBIKE_KMH,
     BICYCLE_KMH,
 )
+
+# Creating output directory for storing results
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = BASE_DIR / 'output'
+
+# Creating output directory if it doesn't exist
+OUTPUT_DIR.mkdir(exist_ok=True)
+
 
 # --- Load shared data (once) ---
 point_fboDF, fbo_fboDF, file4 = common.load_distance_matrices()
@@ -1069,6 +1078,7 @@ if __name__ == "__main__":
             if actualworkhours > 8:
                 chosenBicycleAgent = n
 
+    
     #print("order  delivery vehicle", orderDelivery_Vehicle)
     print("Bicycle Orders", a.orders_fulfilled_bicycle)
     print("Bike Orders", a.orders_fulfilled_bike)
@@ -1090,14 +1100,14 @@ if __name__ == "__main__":
     print("agentearningperhour Bike", agentearningperhourBike)
     print("Median, & Mean, & STDEV agentearningperhour", statistics.median(agentearningperhourBike), statistics.mean(agentearningperhourBike), statistics.stdev(agentearningperhourBike))
     earningDFbike = pd.DataFrame(earningtablebike, columns=['Actual Work hours', 'Days', 'Total Kms travelled', 'Total Earnings', 'Avg. Daily Earnings', 'Avg. Hourly Earnings', 'Total First Mile', 'Total Last Mile', 'Orders Delivered'])
-    # earningDFbike.to_excel(str(orderVol) + "Ordr" + str(mbl) + "MBL" + str(wagerate) + "wgrt" + "500orderValidatn.xlsx")
+    earningDFbike.to_excel(OUTPUT_DIR / (str(orderVol) + "Ordr" + str(mbl) + "MBL" + str(wagerate) + "wgrt" + "BikeEarnings.xlsx"))
     first_mile_bikeDF = pd.DataFrame(first_mile_bike, columns=['FirstMile'])
     last_mile_bikeDF = pd.DataFrame(last_mile_bike, columns=['LastMile'])
-    # first_mile_bikeDF.to_excel("FM500orderValidatn.xlsx")
-    # last_mile_bikeDF.to_excel("LM500orderValidatn.xlsx")
-    #earningDFbike.to_excel(str(orderVol) + "Ordr" + str(wagerate) + "wgrt" + "VlidtnWdoutWeeklyIncentMetaC.xlsx")
+    first_mile_bikeDF.to_excel(OUTPUT_DIR / "FirstMileBike.xlsx")
+    last_mile_bikeDF.to_excel(OUTPUT_DIR / "LastMileBike.xlsx")
+    # earningDFbike.to_excel(str(orderVol) + "Ordr" + str(wagerate) + "wgrt" + "VlidtnWdoutWeeklyIncentMetaC.xlsx")
     distVStimeDF = pd.DataFrame(chosenBikeAgent.distTimeGraph, columns=['x', 'y'])
-    #distVStimeDF.to_excel(str(orderVol) + "Ordr" + str(iterations) + "Itr" + "2.5distVStimeGraphBikeMetaC.xlsx")
+    distVStimeDF.to_excel(OUTPUT_DIR / (str(orderVol) + "Ordr" + str(iterations) + "Itr" + "2.5distVStimeGraphBikeMetaC.xlsx"))
     print("################")
     if a.orders_fulfilled_bicycle > 0:
         print("first mile cycle", sum(first_mile_cycle)/ a.orders_fulfilled_bicycle, statistics.stdev(first_mile_cycle))
@@ -1112,9 +1122,9 @@ if __name__ == "__main__":
         print("agentearningperhour Bicycles", agentearningperhourBicycle)
         print("Median, & Mean, & STDEV agentearningperhour", statistics.median(agentearningperhourBicycle), statistics.mean(agentearningperhourBicycle), statistics.stdev(agentearningperhourBicycle))
         distVStimeDF = pd.DataFrame(chosenBicycleAgent.distTimeGraph, columns=['x', 'y'])
-        #distVStimeDF.to_excel(str(orderVol) + "Ordr" + str(iterations) + "Itr" + "2.5distVStimeGraphBicycleMetaC.xlsx")
+        distVStimeDF.to_excel(OUTPUT_DIR / (str(orderVol) + "Ordr" + str(iterations) + "Itr" + "2.5distVStimeGraphBicycleMetaC.xlsx"))
         earningDFbicycle = pd.DataFrame(earningtablebiycle, columns=['Actual Work hours', 'Days', 'Total Kms travelled', 'Total Earnings', 'Avg. Daily Earnings', 'Avg. Hourly Earnings', 'Total First Mile', 'Total Last Mile', 'Orders Delivered'])
-        #earningDFbicycle.to_excel(str(orderVol) + "Ordr" + str(iterations) + "Itr" + str(wagerate) + "wgrt" + "2.5ETBicylMetaC.xlsx")
+        earningDFbicycle.to_excel(OUTPUT_DIR / (str(orderVol) + "Ordr" + str(iterations) + "Itr" + str(wagerate) + "wgrt" + "2.5ETBicylMetaC.xlsx"))
     print("Bikes, Bicycles", bikes, cycles)
     #######
     # print(chosenBicycleAgent.distTimeGraph)
